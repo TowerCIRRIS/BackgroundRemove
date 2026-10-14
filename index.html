@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suppression d'arrière-plan</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a66;
+    --line: #dedcd6; --accent: #1f6feb; --accent-ink: #fff; --danger: #b42318; --ok: #1a7f37;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --card: #20201e; --ink: #f1efe9; --muted: #9b9990;
+            --line: #34332f; --accent: #5b9bff; --accent-ink: #0b1220; --danger: #ff8a7a; --ok: #56d364; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+
+  #drop { border: 2px dashed var(--line); border-radius: 14px; padding: 32px 16px;
+          text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  #drop:hover, #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  #drop strong { display: block; font-size: 1.05rem; }
+  #drop span { color: var(--muted); font-size: .9rem; }
+  #file { display: none; }
+
+  .opts { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; margin: 20px 0 0; }
+  @media (max-width: 700px) { .opts { grid-template-columns: 1fr; } }
+  fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0; min-width: 0; }
+  legend { padding: 0 6px; color: var(--muted); font-size: .85rem; }
+  label.row { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
+  input[type=password] { width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+         border-radius: 8px; background: transparent; color: var(--ink); font: inherit; margin-top: 8px; }
+  .hint { color: var(--muted); font-size: .82rem; margin: 6px 0 0; }
+
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
+  .sw[aria-pressed=true] { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .checker {
+    background-color: #fff;
+    background-image: linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%),
+                      linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%);
+    background-size: 16px 16px; background-position: 0 0, 8px 8px; }
+  input[type=color] { width: 34px; height: 30px; border: none; background: none; padding: 0; cursor: pointer; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; align-items: center; }
+  button.btn { appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+         padding: 9px 16px; border-radius: 10px; font: inherit; cursor: pointer; }
+  button.btn.small { padding: 6px 12px; font-size: .9rem; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.btn[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); font-weight: 600; }
+  button.btn.restore[aria-pressed=true] { border-color: var(--ok); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 35%, transparent); }
+  button.btn.erase[aria-pressed=true] { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 35%, transparent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  #status { margin-top: 14px; min-height: 1.4em; color: var(--muted); }
+  #status.err { color: var(--danger); }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line);
+          border-top-color: var(--accent); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  /* --- Zone de retouche --- */
+  #results { display: none; margin-top: 24px; }
+  .tools { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-bottom: 16px; }
+  @media (max-width: 800px) { .tools { grid-template-columns: 1fr; } }
+  .toolrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; margin-top: 10px; }
+  .slider label { grid-column: 1 / -1; font-size: .88rem; }
+  .slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .88rem; min-width: 3.5em; text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .panes { display: grid; grid-template-columns: minmax(180px, 1fr) 2.4fr; gap: 16px; align-items: start; }
+  @media (max-width: 800px) { .panes { grid-template-columns: 1fr; } }
+  .pane h2 { font-size: .9rem; color: var(--muted); font-weight: 600; margin: 0 0 8px; }
+  .view { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex;
+          align-items: center; justify-content: center; min-height: 200px; }
+  .view img { max-width: 100%; max-height: 520px; display: block; }
+  .editwrap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; justify-content: center; }
+  .stage { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
+  .stage canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 75vh;
+                  touch-action: none; cursor: none; position: relative; }
+  #ghost { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .35; pointer-events: none; display: none; }
+  #brush { position: absolute; border: 2px solid var(--ok); border-radius: 50%; pointer-events: none;
+           transform: translate(-50%, -50%); display: none; box-shadow: 0 0 0 1px rgba(255,255,255,.7); }
+  #brush.erase { border-color: var(--danger); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Suppression d'arrière-plan</h1>
+  <p class="sub">Basé sur <a href="https://github.com/withoutbg/withoutbg-python" target="_blank" rel="noopener">withoutbg</a>. Traitement local par défaut : l'image ne quitte pas l'ordinateur.</p>
+
+  <div class="card">
+    <div id="drop" tabindex="0" role="button" aria-label="Choisir une image">
+      <strong id="dropTitle">Glisser une image ici, ou cliquer pour choisir</strong>
+      <span>JPG, PNG, WebP, BMP, TIFF — 25 Mo maximum. Le collage (Ctrl+V) fonctionne aussi.</span>
+    </div>
+    <input id="file" type="file" accept="image/*">
+
+    <div class="opts">
+      <fieldset>
+        <legend>Moteur</legend>
+        <label class="row"><input type="radio" name="mode" value="local" checked> Local (gratuit, hors ligne)</label>
+        <label class="row"><input type="radio" name="mode" value="api"> API cloud withoutBG (payante)</label>
+        <input id="apikey" type="password" placeholder="Clé API (sk_…), ou variable WITHOUTBG_API_KEY" autocomplete="off" hidden>
+        <p class="hint" id="modeHint">Premier lancement local : téléchargement du modèle (~1,5 Go), une seule fois.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Fond du résultat (aperçu et téléchargement)</legend>
+        <div class="swatches" id="swatches">
+          <button class="sw checker" data-bg="transparent" aria-pressed="true" title="Transparent"></button>
+          <button class="sw" data-bg="#ffffff" style="background:#fff" aria-pressed="false" title="Blanc"></button>
+          <button class="sw" data-bg="#000000" style="background:#000" aria-pressed="false" title="Noir"></button>
+          <input type="color" id="custom" value="#1f6feb" title="Couleur personnalisée">
+        </div>
+        <p class="hint">« Transparent » produit un PNG avec canal alpha.</p>
+      </fieldset>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="go" disabled>Supprimer l'arrière-plan</button>
+      <button class="btn" id="dl" hidden>Télécharger le PNG</button>
+      <button class="btn" id="copy" hidden>Copier l'image</button>
+    </div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <section id="results">
+    <div class="card" style="margin-bottom:16px">
+      <div class="tools">
+        <fieldset>
+          <legend>Outils de retouche</legend>
+          <div class="toolrow">
+            <button class="btn small restore" id="toolWand" aria-pressed="true" title="Un clic restaure toute la zone de couleur proche (Alt+clic : efface la zone)">Baguette</button>
+            <button class="btn small restore" id="toolRestore" aria-pressed="false" title="Repeint avec les pixels de l'original">Pinceau : restaurer</button>
+            <button class="btn small erase" id="toolErase" aria-pressed="false" title="Rend transparent">Pinceau : effacer</button>
+            <button class="btn small" id="undo" disabled title="Ctrl+Z">Annuler</button>
+            <button class="btn small" id="redo" disabled title="Ctrl+Y">Rétablir</button>
+          </div>
+          <div class="slider">
+            <label for="tol">Baguette : tolérance de couleur (plus haut = zone plus large)</label>
+            <input type="range" id="tol" min="4" max="40" step="1" value="18"><output id="tolOut">18</output>
+          </div>
+          <div class="slider">
+            <label for="size">Pinceau : taille</label>
+            <input type="range" id="size" min="0.5" max="25" step="0.5" value="5"><output id="sizeOut">5 %</output>
+          </div>
+          <div class="slider">
+            <label for="hard">Pinceau : dureté des bords</label>
+            <input type="range" id="hard" min="0" max="100" step="5" value="70"><output id="hardOut">70 %</output>
+          </div>
+          <p class="hint"><strong>Baguette</strong> : cliquer sur la main (ou toute zone à récupérer) ; cliquer de nouveau sur les parties restantes, par exemple dans l'ombre. Alt maintenu : inverse l'outil (efface au lieu de restaurer). Touches W : baguette, X : restaurer/effacer, [ et ] : taille du pinceau.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Réglages du masque</legend>
+          <div class="slider">
+            <label for="sens">Bords semi-transparents : renforcer l'opacité</label>
+            <input type="range" id="sens" min="0" max="100" step="1" value="0"><output id="sensOut">0 %</output>
+          </div>
+          <div class="slider">
+            <label for="clean">Nettoyage (supprime les résidus très peu opaques)</label>
+            <input type="range" id="clean" min="0" max="50" step="1" value="0"><output id="cleanOut">0 %</output>
+          </div>
+          <p class="hint">Ces deux réglages n'agissent que sur ce que le modèle a gardé, même partiellement (bords flous, cheveux, résidus). Une zone totalement supprimée, comme une main, se récupère avec la <strong>baguette</strong> ou le pinceau « restaurer ».</p>
+          <div class="toolrow" style="margin-top:10px">
+            <label class="row"><input type="checkbox" id="ghostToggle" checked> Original en filigrane (aide à repérer quoi restaurer)</label>
+            <button class="btn small" id="resetAll">Réinitialiser les retouches</button>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+
+    <div class="panes">
+      <div class="pane"><h2>Original</h2><div class="view"><img id="imgOrig" alt="Image originale"></div></div>
+      <div class="pane">
+        <h2>Résultat (modifiable au pinceau)</h2>
+        <div class="editwrap">
+          <div class="stage checker" id="stage">
+            <img id="ghost" alt="">
+            <canvas id="edit"></canvas>
+            <div id="brush"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const drop = $('drop'), fileInput = $('file'), go = $('go'), statusEl = $('status');
+  const dl = $('dl'), copyBtn = $('copy'), apikey = $('apikey');
+  const edit = $('edit'), stage = $('stage'), brushEl = $('brush'), ghost = $('ghost');
+  const MAX_PREVIEW = 1400;
+
+  // --- État ---
+  let file = null, origURL = null, bg = 'transparent';
+  const S = {
+    W: 0, H: 0, orig: null, cut: null, ps: 1, pw: 0, ph: 0,
+    prevOrigData: null, prevCutData: null,
+    cF: null, cO: null, cR: null, cE: null, cT: null,
+    strokes: [], redo: [], drawing: null,
+    tool: 'wand', size: 5, hard: 70, tol: 18, sens: 0, clean: 0, chroma: null,
+  };
+  let rafPending = false;
+
+  const setStatus = (msg, err = false, busy = false) => {
+    statusEl.className = err ? 'err' : '';
+    statusEl.innerHTML = '';
+    if (busy) statusEl.insertAdjacentHTML('afterbegin', '<span class="spin"></span>');
+    statusEl.append(document.createTextNode(msg));
+  };
+  const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+  // --- Chargement du fichier ---
+  function setFile(f) {
+    if (!f || !f.type.startsWith('image/')) { setStatus("Ce fichier n'est pas une image.", true); return; }
+    file = f; S.cut = null;
+    if (origURL) URL.revokeObjectURL(origURL);
+    origURL = URL.createObjectURL(f);
+    $('imgOrig').src = origURL; ghost.src = origURL;
+    $('results').style.display = 'block';
+    edit.style.visibility = 'hidden';
+    $('dropTitle').textContent = f.name;
+    go.disabled = false; dl.hidden = true; copyBtn.hidden = true;
+    setStatus('');
+  }
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => setFile(e.dataTransfer.files[0]));
+  window.addEventListener('paste', (e) => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) setFile(item.getAsFile());
+  });
+
+  document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
+    const api = document.querySelector('input[name=mode]:checked').value === 'api';
+    apikey.hidden = !api;
+    $('modeHint').textContent = api
+      ? "Mode cloud : l'image est envoyée à l'API withoutBG."
+      : 'Premier lancement local : téléchargement du modèle (~1,5 Go), une seule fois.';
+  }));
+
+  // --- Fond du résultat ---
+  function applyBg() {
+    stage.classList.toggle('checker', bg === 'transparent');
+    stage.style.background = bg === 'transparent' ? '' : bg;
+  }
+  document.querySelectorAll('.sw').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true'); bg = b.dataset.bg; applyBg();
+  }));
+  $('custom').addEventListener('input', (e) => {
+    document.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    bg = e.target.value; applyBg();
+  });
+
+  // --- Moteur de rendu ---
+  // Courbe d'alpha : couleur prise sur le détourage du modèle quand il est assez opaque,
+  // sinon sur l'original (pour ne pas perdre les couleurs des zones reprises).
+  function applyCurve(orig, cut, out, sens, cleanPct) {
+    const t = 1 - 0.9 * (sens / 100), c = cleanPct / 100, n = cut.length;
+    for (let i = 0; i < n; i += 4) {
+      let a = cut[i + 3] / 255;
+      const src = cut[i + 3] >= 40 ? cut : orig;
+      if (a < c) a = 0;
+      a = Math.min(1, a / t);
+      out[i] = src[i]; out[i + 1] = src[i + 1]; out[i + 2] = src[i + 2];
+      out[i + 3] = Math.round(a * 255);
+    }
+  }
+
+  function drawStamp(ctx, x, y, r, hard, add) {
+    ctx.globalCompositeOperation = add ? 'source-over' : 'destination-out';
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(Math.min(hard, 0.999), 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Applique le segment i0-1 → i0 d'un trait (coordonnées en pixels image, multipliées par sx, sy).
+  function stampSegment(cR, cE, st, i0, sx, sy) {
+    const ctxR = cR.getContext('2d'), ctxE = cE.getContext('2d');
+    const r = st.size * Math.max(S.W, S.H) * Math.max(sx, sy) / 2;
+    const hard = st.hard / 100, restore = st.mode === 'restore';
+    const stamp = (x, y) => {
+      drawStamp(ctxR, x, y, r, hard, restore);   // restaurer ajoute à R, effacer retire de R
+      drawStamp(ctxE, x, y, r, hard, !restore);  // effacer ajoute à E, restaurer retire de E
+    };
+    const p1 = st.pts[i0];
+    if (i0 === 0) { stamp(p1[0] * sx, p1[1] * sy); return; }
+    const p0 = st.pts[i0 - 1];
+    const x0 = p0[0] * sx, y0 = p0[1] * sy, x1 = p1[0] * sx, y1 = p1[1] * sy;
+    const d = Math.hypot(x1 - x0, y1 - y0), step = Math.max(1, r * 0.2);
+    const n = Math.max(1, Math.ceil(d / step));
+    for (let k = 1; k <= n; k++) stamp(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n);
+  }
+
+  function replayStrokes(cR, cE, sx, sy) {
+    for (const c of [cR, cE]) {
+      const x = c.getContext('2d'); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, c.width, c.height);
+    }
+    for (const st of S.strokes) {
+      if (st.type === 'mask') applyMask(cR, cE, st);
+      else for (let i = 0; i < st.pts.length; i++) stampSegment(cR, cE, st, i, sx, sy);
+    }
+  }
+
+  // --- Baguette : croissance de région sur la teinte de l'original ---
+  // La distance ne tient compte que de la chrominance (Cb, Cr) : la peau garde la même teinte
+  // qu'elle soit éclairée ou dans l'ombre, alors que le sol (neutre) s'en distingue nettement.
+  function chromaPlanes() {
+    if (S.chroma) return S.chroma;
+    const d = S.prevOrigData.data, n = S.pw * S.ph, cb = new Float32Array(n), cr = new Float32Array(n);
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      const r = d[p], g = d[p + 1], b = d[p + 2], y = 0.299 * r + 0.587 * g + 0.114 * b;
+      cb[i] = (b - y) * 0.564; cr[i] = (r - y) * 0.713;
+    }
+    return (S.chroma = { cb, cr });
+  }
+
+  function wandMask(sx, sy, tol) {
+    const { cb, cr } = chromaPlanes(), W = S.pw, H = S.ph;
+    sx = Math.min(W - 1, Math.max(0, sx | 0)); sy = Math.min(H - 1, Math.max(0, sy | 0));
+    let cb0 = 0, cr0 = 0, cnt = 0;                                  // teinte de référence : moyenne 5x5
+    for (let y = Math.max(0, sy - 2); y <= Math.min(H - 1, sy + 2); y++)
+      for (let x = Math.max(0, sx - 2); x <= Math.min(W - 1, sx + 2); x++) { cb0 += cb[y * W + x]; cr0 += cr[y * W + x]; cnt++; }
+    cb0 /= cnt; cr0 /= cnt;
+    const t2 = tol * tol, mask = new Uint8Array(W * H), stack = new Int32Array(W * H);
+    let sp = 0; stack[sp++] = sy * W + sx; mask[sy * W + sx] = 1;
+    const ok = (i) => { const a = cb[i] - cb0, b = cr[i] - cr0; return a * a + b * b <= t2; };
+    while (sp) {
+      const i = stack[--sp], x = i % W, y = (i / W) | 0;
+      if (x > 0 && !mask[i - 1] && ok(i - 1)) { mask[i - 1] = 1; stack[sp++] = i - 1; }
+      if (x < W - 1 && !mask[i + 1] && ok(i + 1)) { mask[i + 1] = 1; stack[sp++] = i + 1; }
+      if (y > 0 && !mask[i - W] && ok(i - W)) { mask[i - W] = 1; stack[sp++] = i - W; }
+      if (y < H - 1 && !mask[i + W] && ok(i + W)) { mask[i + W] = 1; stack[sp++] = i + W; }
+    }
+    return mask;
+  }
+
+  // Masque binaire → canevas RGBA dont l'alpha est légèrement adouci (flou de boîte 3x3).
+  function maskToCanvas(mask) {
+    const W = S.pw, H = S.ph, c = mkCanvas(W, H), ctx = c.getContext('2d'), img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let s = 0, k = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx >= 0 && xx < W && yy >= 0 && yy < H) { s += mask[yy * W + xx]; k++; }
+      }
+      img.data[(y * W + x) * 4 + 3] = Math.round(255 * s / k);
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  function applyMask(cR, cE, st) {
+    const restore = st.mode === 'restore', xr = cR.getContext('2d'), xe = cE.getContext('2d');
+    xr.globalCompositeOperation = restore ? 'source-over' : 'destination-out';
+    xr.drawImage(st.canvas, 0, 0, cR.width, cR.height);
+    xe.globalCompositeOperation = restore ? 'destination-out' : 'source-over';
+    xe.drawImage(st.canvas, 0, 0, cE.width, cE.height);
+    xr.globalCompositeOperation = xe.globalCompositeOperation = 'source-over';
+  }
+
+  function compose(out, cF, cO, cR, cE, cT) {
+    const w = out.width, h = out.height, o = out.getContext('2d');
+    o.globalCompositeOperation = 'source-over'; o.clearRect(0, 0, w, h);
+    o.drawImage(cF, 0, 0);
+    const t = cT.getContext('2d');
+    t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, w, h);
+    t.drawImage(cO, 0, 0);
+    t.globalCompositeOperation = 'destination-in'; t.drawImage(cR, 0, 0);
+    t.globalCompositeOperation = 'source-over';
+    o.drawImage(cT, 0, 0);
+    o.globalCompositeOperation = 'destination-out'; o.drawImage(cE, 0, 0);
+    o.globalCompositeOperation = 'source-over';
+  }
+
+  function refreshCurve() {
+    const out = new Uint8ClampedArray(S.prevCutData.data.length);
+    applyCurve(S.prevOrigData.data, S.prevCutData.data, out, S.sens, S.clean);
+    S.cF.getContext('2d').putImageData(new ImageData(out, S.pw, S.ph), 0, 0);
+  }
+  function refreshView() { compose(edit, S.cF, S.cO, S.cR, S.cE, S.cT); }
+  function schedule(curve) {
+    if (curve) S.curveDirty = true;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (!S.cut) return;
+      if (S.curveDirty) { refreshCurve(); S.curveDirty = false; }
+      refreshView();
+    });
+  }
+
+  async function loadBitmap(blobOrFile) {
+    try { return await createImageBitmap(blobOrFile, { imageOrientation: 'from-image' }); }
+    catch { return await createImageBitmap(blobOrFile); }
+  }
+
+  async function initEditor(cutBlob) {
+    const cut = await loadBitmap(cutBlob), orig = await loadBitmap(file);
+    S.cut = cut; S.orig = orig; S.W = cut.width; S.H = cut.height;
+    S.ps = Math.min(1, MAX_PREVIEW / Math.max(S.W, S.H));
+    S.pw = Math.round(S.W * S.ps); S.ph = Math.round(S.H * S.ps);
+    S.strokes = []; S.redo = []; S.drawing = null; S.chroma = null;
+    S.cO = mkCanvas(S.pw, S.ph); S.cO.getContext('2d').drawImage(orig, 0, 0, S.pw, S.ph);
+    const cc = mkCanvas(S.pw, S.ph), cx = cc.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(cut, 0, 0, S.pw, S.ph);
+    S.prevCutData = cx.getImageData(0, 0, S.pw, S.ph);
+    S.prevOrigData = S.cO.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, S.pw, S.ph);
+    S.cF = mkCanvas(S.pw, S.ph); S.cR = mkCanvas(S.pw, S.ph); S.cE = mkCanvas(S.pw, S.ph); S.cT = mkCanvas(S.pw, S.ph);
+    edit.width = S.pw; edit.height = S.ph; edit.style.visibility = 'visible';
+    ghost.style.display = $('ghostToggle').checked ? 'block' : 'none';
+    applyBg(); refreshCurve(); refreshView(); updateHistoryButtons();
+  }
+
+  // --- Export en pleine résolution ---
+  async function exportBlob() {
+    const W = S.W, H = S.H;
+    const cO = mkCanvas(W, H), xo = cO.getContext('2d', { willReadFrequently: true }); xo.drawImage(S.orig, 0, 0, W, H);
+    const cC = mkCanvas(W, H), xc = cC.getContext('2d', { willReadFrequently: true }); xc.drawImage(S.cut, 0, 0, W, H);
+    const od = xo.getImageData(0, 0, W, H), cd = xc.getImageData(0, 0, W, H);
+    const out = new Uint8ClampedArray(cd.data.length);
+    applyCurve(od.data, cd.data, out, S.sens, S.clean);
+    const cF = mkCanvas(W, H); cF.getContext('2d').putImageData(new ImageData(out, W, H), 0, 0);
+    const cR = mkCanvas(W, H), cE = mkCanvas(W, H), cT = mkCanvas(W, H), res = mkCanvas(W, H);
+    replayStrokes(cR, cE, 1, 1);
+    compose(res, cF, cO, cR, cE, cT);
+    let final = res;
+    if (bg !== 'transparent') {
+      final = mkCanvas(W, H);
+      const f = final.getContext('2d'); f.fillStyle = bg; f.fillRect(0, 0, W, H); f.drawImage(res, 0, 0);
+    }
+    return new Promise((ok, ko) => final.toBlob(b => b ? ok(b) : ko(new Error('Export impossible.')), 'image/png'));
+  }
+
+  dl.addEventListener('click', async () => {
+    dl.disabled = true; setStatus('Préparation du fichier…', false, true);
+    try {
+      const blob = await exportBlob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(file?.name || 'image').replace(/\.[^.]+$/, '')}-sans-fond.png`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      setStatus('Fichier enregistré.');
+    } catch (e) { setStatus(e.message || 'Export impossible.', true); }
+    finally { dl.disabled = false; }
+  });
+  copyBtn.addEventListener('click', async () => {
+    try {
+      setStatus('Préparation de l\'image…', false, true);
+      const blob = await exportBlob();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      setStatus('Image copiée dans le presse-papiers.');
+    } catch { setStatus('Copie impossible dans ce navigateur.', true); }
+  });
+
+  // --- Outils ---
+  function setTool(t) {
+    S.tool = t;
+    $('toolWand').setAttribute('aria-pressed', t === 'wand');
+    $('toolRestore').setAttribute('aria-pressed', t === 'restore');
+    $('toolErase').setAttribute('aria-pressed', t === 'erase');
+    brushEl.classList.toggle('erase', t === 'erase');
+    edit.style.cursor = t === 'wand' ? 'crosshair' : 'none';
+    if (t === 'wand') brushEl.style.display = 'none';
+  }
+  $('toolWand').addEventListener('click', () => setTool('wand'));
+  $('toolRestore').addEventListener('click', () => setTool('restore'));
+  $('toolErase').addEventListener('click', () => setTool('erase'));
+
+  const bindSlider = (id, key, fmt, curve) => {
+    const el = $(id), out = $(id + 'Out');
+    const upd = () => { S[key] = parseFloat(el.value); out.textContent = fmt(S[key]); if (S.cut && curve) schedule(true); };
+    el.addEventListener('input', upd); upd();
+  };
+  bindSlider('tol', 'tol', v => `${v}`, false);
+  bindSlider('size', 'size', v => `${v} %`, false);
+  bindSlider('hard', 'hard', v => `${v} %`, false);
+  bindSlider('sens', 'sens', v => `${v} %`, true);
+  bindSlider('clean', 'clean', v => `${v} %`, true);
+
+  $('ghostToggle').addEventListener('change', (e) => { ghost.style.display = e.target.checked && S.cut ? 'block' : 'none'; });
+
+  function updateHistoryButtons() {
+    $('undo').disabled = !S.strokes.length; $('redo').disabled = !S.redo.length;
+  }
+  function undo() {
+    if (!S.cut || !S.strokes.length) return;
+    S.redo.push(S.strokes.pop()); replayStrokes(S.cR, S.cE, S.ps, S.ps); schedule(false); updateHistoryButtons();
+  }
+  function redo() {
+    if (!S.cut || !S.redo.length) return;
+    S.strokes.push(S.redo.pop()); replayStrokes(S.cR, S.cE, S.ps, S.ps); schedule(false); updateHistoryButtons();
+  }
+  $('undo').addEventListener('click', undo);
+  $('redo').addEventListener('click', redo);
+  $('resetAll').addEventListener('click', () => {
+    if (!S.cut) return;
+    S.strokes = []; S.redo = [];
+    for (const id of ['sens', 'clean']) { $(id).value = 0; $(id).dispatchEvent(new Event('input')); }
+    replayStrokes(S.cR, S.cE, S.ps, S.ps); schedule(true); updateHistoryButtons();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (/input|textarea/i.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+    else if (!e.ctrlKey && !e.metaKey) {
+      if (k === 'w') setTool('wand');
+      else if (k === 'x') setTool(S.tool === 'restore' ? 'erase' : 'restore');
+      else if (k === '[' || k === ']') {
+        const el = $('size'); el.value = Math.min(25, Math.max(0.5, +el.value + (k === ']' ? 0.5 : -0.5)));
+        el.dispatchEvent(new Event('input'));
+      }
+    }
+  });
+
+  // --- Pinceau (souris, stylet, tactile) ---
+  function toImage(e) {
+    const r = edit.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * S.W, (e.clientY - r.top) / r.height * S.H];
+  }
+  function moveBrush(e) {
+    const r = edit.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+    const d = S.size / 100 * Math.max(S.W, S.H) * (r.width / S.W);
+    brushEl.style.width = brushEl.style.height = d + 'px';
+    brushEl.style.left = (e.clientX - sr.left) + 'px'; brushEl.style.top = (e.clientY - sr.top) + 'px';
+    const eff = e.altKey ? (S.tool === 'restore' ? 'erase' : 'restore') : S.tool;
+    brushEl.classList.toggle('erase', eff === 'erase');
+  }
+  edit.addEventListener('contextmenu', (e) => e.preventDefault());
+  edit.addEventListener('pointerenter', () => { if (S.cut && S.tool !== 'wand') brushEl.style.display = 'block'; });
+  edit.addEventListener('pointerleave', () => { if (!S.drawing) brushEl.style.display = 'none'; });
+  edit.addEventListener('pointerdown', (e) => {
+    if (!S.cut || e.button > 0) return;
+    e.preventDefault();
+    if (S.tool === 'wand') {                      // un clic = une région ajoutée à l'historique
+      const [ix, iy] = toImage(e);
+      const mask = wandMask(ix * S.ps, iy * S.ps, S.tol);
+      const st = { type: 'mask', mode: e.altKey ? 'erase' : 'restore', canvas: maskToCanvas(mask) };
+      S.strokes.push(st); S.redo = [];
+      applyMask(S.cR, S.cE, st); schedule(false); updateHistoryButtons();
+      return;
+    }
+    edit.setPointerCapture(e.pointerId);
+    const mode = e.altKey ? (S.tool === 'restore' ? 'erase' : 'restore') : S.tool;
+    const st = { mode, size: S.size / 100, hard: S.hard, pts: [toImage(e)] };
+    S.strokes.push(st); S.redo = []; S.drawing = st;
+    stampSegment(S.cR, S.cE, st, 0, S.ps, S.ps);
+    moveBrush(e); schedule(false); updateHistoryButtons();
+  });
+  edit.addEventListener('pointermove', (e) => {
+    if (!S.cut) return;
+    moveBrush(e);
+    if (!S.drawing) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (evs.length ? evs : [e])) {
+      S.drawing.pts.push(toImage(ev));
+      stampSegment(S.cR, S.cE, S.drawing, S.drawing.pts.length - 1, S.ps, S.ps);
+    }
+    schedule(false);
+  });
+  const endStroke = (e) => {
+    if (!S.drawing) return;
+    S.drawing = null;
+    if (e && e.type === 'pointerup') { /* trait terminé */ }
+    updateHistoryButtons();
+  };
+  edit.addEventListener('pointerup', endStroke);
+  edit.addEventListener('pointercancel', endStroke);
+
+  // --- Traitement par le modèle ---
+  go.addEventListener('click', async () => {
+    if (!file) return;
+    const mode = document.querySelector('input[name=mode]:checked').value;
+    const fd = new FormData();
+    fd.append('image', file); fd.append('mode', mode);
+    if (mode === 'api') fd.append('api_key', apikey.value);
+
+    go.disabled = true; dl.hidden = true; copyBtn.hidden = true;
+    setStatus(mode === 'local'
+      ? 'Traitement en cours… (le tout premier lancement télécharge le modèle, cela peut prendre plusieurs minutes)'
+      : "Traitement en cours via l'API…", false, true);
+    const t0 = performance.now();
+    try {
+      const r = await fetch('/api/remove', { method: 'POST', body: fd });
+      if (!r.ok) {
+        let msg = `Erreur ${r.status}`;
+        try { msg = (await r.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
+      await initEditor(await r.blob());
+      dl.hidden = false; copyBtn.hidden = !navigator.clipboard?.write;
+      stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setStatus(`Terminé en ${((performance.now() - t0) / 1000).toFixed(1)} s. Il manque quelque chose ? Avec l'outil « Baguette », cliquer sur la zone à récupérer.`);
+    } catch (e) {
+      setStatus(e.message, true);
+    } finally {
+      go.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

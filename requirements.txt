@@ -1,0 +1,3 @@
+withoutbg
+flask>=3.0
+pillow
